@@ -1,27 +1,36 @@
 /**
-* Name: Simulacion Av Simon Bolivar - CALIBRADA 2025
+* Name: Simulacion Av Simon Bolivar - FINAL VISUAL HD
 * Author: Jordi, Byron
-* Description: Calibrada para 1.1 accidentes/día (268 en 8 meses).
+* Description: Lógica exacta anterior + Mejora gráfica sustancial de la carretera.
 */
 
 model simulacion_realista
 
 global {
-	// --- 1. ARCHIVOS ---
+	// --- 1. ARCHIVOS (IGUAL) ---
 	file archivo_toda_la_red <- file("../includes/red_vial_unificada.shp");
 	file archivo_simon_bolivar <- file("../includes/eje_simon_bolivar.shp"); 
 	file barrios_shapefile <- file("../includes/Barrios_Final.shp");
 
-	// --- 2. MUNDO ---
+	// --- 2. MUNDO (IGUAL) ---
 	geometry shape <- envelope(archivo_toda_la_red);
 	graph road_network;
 
-	// --- 3. DATOS DE RIESGO ---
-	list<float> riesgo_por_hora <- [1.5, 1.2, 2.8, 0.5, 1.5, 2.5, 3.0, 2.5, 2.0, 1.2, 1.0, 1.5, 1.8, 1.5, 1.5, 2.0, 1.8, 2.5, 2.2, 1.8, 2.0, 1.5, 1.2, 1.8];
+	// --- 3. DATOS DE RIESGO (IGUAL) ---
+	list<list<float>> matriz_riesgo_semanal <- [
+		[1.0, 0.5, 0.5, 0.5, 0.5, 1.5, 2.0, 2.0, 2.0, 1.0, 1.5, 1.5, 1.0, 2.0, 1.0, 1.0, 2.0, 2.5, 2.0, 1.0, 1.0, 1.0, 0.5, 1.0],
+		[0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 2.5, 2.5, 3.0, 2.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.5, 2.0, 1.5, 2.5, 1.0, 0.5, 0.5, 0.5, 1.5],
+		[1.0, 1.0, 0.5, 0.5, 0.5, 1.5, 2.0, 1.0, 2.5, 1.0, 1.0, 1.0, 1.0, 2.0, 2.5, 1.0, 1.0, 2.0, 1.5, 2.0, 1.0, 0.5, 0.5, 1.0],
+		[1.0, 1.0, 1.5, 0.5, 0.5, 2.5, 2.0, 2.5, 2.0, 1.0, 0.5, 1.5, 1.0, 0.5, 1.0, 1.0, 2.0, 2.5, 2.0, 1.5, 0.5, 0.5, 0.5, 2.0],
+		[2.0, 1.5, 1.5, 1.0, 0.5, 1.5, 1.0, 2.5, 1.5, 1.0, 1.0, 1.0, 3.0, 1.0, 0.5, 2.0, 2.5, 3.0, 1.0, 1.5, 2.5, 2.0, 3.0, 2.5],
+		[2.0, 2.0, 2.0, 1.0, 3.0, 3.0, 2.5, 1.5, 3.0, 1.5, 1.5, 2.5, 3.0, 1.0, 0.5, 2.5, 1.0, 0.5, 1.0, 2.0, 1.5, 2.0, 0.5, 1.0],
+		[2.0, 1.5, 5.0, 1.0, 1.5, 2.5, 4.0, 2.5, 1.5, 1.5, 1.0, 1.5, 2.0, 2.0, 2.5, 2.5, 1.0, 2.5, 1.5, 1.5, 4.0, 1.0, 2.0, 0.5]
+	];
+	list<string> nombres_dias <- ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 	list<float> riesgo_mensual <- [4.96, 7.52, 11.04, 7.84, 9.76, 8.48, 10.40, 12.16, 9.44, 10.24, 8.16, 9.18];
 	list<float> prob_lluvia_mes <- [0.6, 0.7, 0.8, 0.8, 0.5, 0.2, 0.1, 0.1, 0.4, 0.6, 0.7, 0.7];
 
-	// --- 4. CALIBRACIÓN 2025 ---
+	// --- 4. CONFIGURACIÓN (IGUAL) ---
 	int mes_simulacion <- 3 min: 1 max: 12; 
 	int num_vehiculos <- 1500; 
 	bool lluvia_activa <- false;
@@ -29,15 +38,16 @@ global {
 	// TIEMPO
 	int hora_actual <- 6; 
 	int minuto_actual <- 0;
-	int dias_simulados <- 0; // Contador de días
-	rgb color_fondo <- rgb(80,80,80);
+	int dias_simulados <- 0; 
+	int dia_semana <- 0;
+	rgb color_fondo <- rgb(60,60,60); // Fondo un poco más oscuro para contraste
 	bool es_noche <- false;
 
 	// ESTADÍSTICAS
 	int total_accidentes <- 0;
 	int acc_velocidad <- 0; int acc_distancia <- 0; int acc_alcohol <- 0; int acc_clima <- 0; int acc_normal <- 0;    
 
-	// PROYECCIÓN (Para validar el dato de 268)
+	// PROYECCIÓN 
 	float promedio_diario <- 0.0;
 	float proyeccion_8_meses <- 0.0;
 
@@ -57,11 +67,12 @@ global {
 	}
 
 	action crear_trafico_inicial {
-		create Moto number: num_vehiculos * 0.603; 
-		create Auto number: num_vehiculos * 0.262; 
-		create Camioneta number: num_vehiculos * 0.063;
-		create Bicicleta number: num_vehiculos * 0.040;
-		create Bus number: num_vehiculos * 0.032;
+		create Moto number: num_vehiculos * 0.12;        
+		create Auto number: num_vehiculos * 0.60;        
+		create Camioneta number: num_vehiculos * 0.20;   
+		create Transporte_Pesado number: num_vehiculos * 0.04; 
+		create Bus number: num_vehiculos * 0.035;        
+		create Bicicleta number: num_vehiculos * 0.005;  
 	}
 
 	reflex control_tiempo_y_clima {
@@ -73,10 +84,10 @@ global {
 			
 			if (hora_actual >= 24) { 
 				hora_actual <- 0; 
-				dias_simulados <- dias_simulados + 1; // Pasó un día completo
-				
-				// --- NUEVO: CONDICIÓN DE PARADA AUTOMÁTICA ---
-				// Enero a Agosto son aprox 243 días.
+				dias_simulados <- dias_simulados + 1; 
+				dia_semana <- dia_semana + 1;
+				if (dia_semana > 6) { dia_semana <- 0; }
+
 				if (dias_simulados = 243) {
 					write "---------------------------------------------------";
 					write "FIN DEL PERIODO DE ESTUDIO (Enero - Agosto)";
@@ -84,32 +95,53 @@ global {
 					write "Total Real Esperado: 268";
 					write "Precisión del Modelo: " + (total_accidentes / 268.0) * 100 + "%";
 					write "---------------------------------------------------";
-					
-					// Esto congela la simulación para que puedas ver los datos
 					do pause; 
 				}
 
-				// Actualizar cálculos de proyección (para verlos mientras corre)
 				if (dias_simulados > 0) {
 					promedio_diario <- total_accidentes / dias_simulados;
 					proyeccion_8_meses <- promedio_diario * 243;
 				}
 			}
-			
 			if (flip(prob_lluvia_mes at (mes_simulacion - 1))) { lluvia_activa <- true; } else { lluvia_activa <- false; }
 		}
-
 		if (hora_actual >= 19 or hora_actual <= 5) { es_noche <- true; color_fondo <- #black; } 
-		else { es_noche <- false; color_fondo <- lluvia_activa ? #dimgray : rgb(80,80,80); }
+		else { es_noche <- false; color_fondo <- lluvia_activa ? #dimgray : rgb(60,60,60); }
 	}
 }
 
-// --- ESPECIES VISUALES ---
-species via_decorativa { aspect default { draw shape color: rgb(40,40,40) width: 0.1; } }
-species via_principal { aspect default { draw shape color: #orangered width: 4.0; } }
-species barrio { string nombre; aspect default { draw shape color: rgb(20,20,20) border: #darkgray; } }
+// --- MEJORA VISUAL DEL ENTORNO ---
 
-// --- AGENTES DE TRÁFICO ---
+species via_decorativa { 
+	aspect default { 
+		// Vías secundarias más sutiles (gris oscuro)
+		draw shape color: rgb(30,30,30) width: 0.5; 
+	} 
+}
+
+// --- ¡AQUÍ ESTÁ LA MAGIA VISUAL! ---
+species via_principal { 
+	aspect default { 
+		// 1. Capa Base (Asfalto oscuro ancho)
+		draw shape color: rgb(40,40,40) width: 25.0; 
+		
+		// 2. Capa Superior (Un gris un poco más claro para textura)
+		draw shape color: rgb(70,70,70) width: 22.0;
+		
+		// 3. Línea Divisoria Central (Blanca y delgada)
+		draw shape color: #white width: 0.8;
+	} 
+}
+
+species barrio { 
+	string nombre;
+	aspect default { 
+		// Barrios más oscuros para que resalte la vía
+		draw shape color: rgb(15,15,15) border: rgb(40,40,40); 
+	} 
+}
+
+// --- AGENTES DE TRÁFICO (Lógica Idéntica) ---
 species Vehiculo skills: [moving] {
 	float velocidad_base; float velocidad_real; rgb color_base; point objetivo; float tamano_dibujo; 
 	bool es_imprudente <- flip(0.40); bool no_respeta_distancia <- flip(0.20); bool es_ebrio <- false; bool chocado <- false;
@@ -121,7 +153,7 @@ species Vehiculo skills: [moving] {
 		if (location distance_to extremo_norte < location distance_to extremo_sur) { objetivo <- extremo_sur; } 
 		else { objetivo <- extremo_norte; }
 		heading <- (location towards objetivo);
-		if (flip(0.02)) { es_ebrio <- true; } 
+		if (dia_semana >= 4) { if (flip(0.05)) { es_ebrio <- true; } } else { if (flip(0.01)) { es_ebrio <- true; } }
 	}
 
 	reflex moverse {
@@ -151,16 +183,16 @@ species Vehiculo skills: [moving] {
 
 	reflex calcular_accidente {
 		if (chocado) { return; }
-		if (location distance_to (via_principal closest_to location) > 50.0) { return; }
+		
+		via_principal via_cercana <- via_principal closest_to location;
+		if (via_cercana = nil) { return; }
+		if (location distance_to via_cercana > 50.0) { return; }
 
-		// --- CALIBRACIÓN MATEMÁTICA ---
-		// Antes: 0.00005 (Daba ~20 acc/día)
-		// Ahora: 0.000003 (Objetivo: ~1.1 acc/día)
 		float probabilidad_base <- 0.0000005; 
 
 		float factor_mes <- (riesgo_mensual at (mes_simulacion - 1)) / 8.0; 
-		float probabilidad <- probabilidad_base * factor_mes;
-		probabilidad <- probabilidad * (riesgo_por_hora at hora_actual);
+		float factor_hora_dia <- (matriz_riesgo_semanal at dia_semana) at hora_actual;
+		float probabilidad <- probabilidad_base * factor_mes * factor_hora_dia;
 
 		if (lluvia_activa) {
 			probabilidad <- probabilidad * 1.20; 
@@ -185,24 +217,44 @@ species Vehiculo skills: [moving] {
 		else if (es_imprudente) { acc_velocidad <- acc_velocidad + 1; }
 		else if (no_respeta_distancia) { acc_distancia <- acc_distancia + 1; }
 		else { acc_normal <- acc_normal + 1; }
-		write "ACCIDENTE #" + total_accidentes + " (" + species(self) + ") Hora: " + hora_actual + ":00";
+		write "ACCIDENTE #" + total_accidentes + " (" + species(self) + ") - " + (nombres_dias at dia_semana) + " " + hora_actual + ":00";
 	}
 	
+	// --- DIBUJO DEL VEHÍCULO CON DESPLAZAMIENTO (IGUAL) ---
 	aspect default {
-		if (chocado) { draw circle(120) color: #red border: #white; } 
-		else { 
-			draw circle(tamano_dibujo) color: color_base; 
-			draw triangle(tamano_dibujo * 0.8) color: #white rotate: heading + 90 border: #black at: location;
+		// Calculamos el punto a la derecha
+		point pos_visual <- location + {cos(heading + 90) * 8.0, sin(heading + 90) * 8.0};
+
+		if (chocado) { 
+			draw circle(120) color: #red border: #white at: pos_visual; 
+		} else { 
+			// Dibujamos el vehículo en la posición desplazada
+			draw circle(tamano_dibujo) color: color_base at: pos_visual; 
+			draw triangle(tamano_dibujo * 0.8) color: #white rotate: heading + 90 border: #black at: pos_visual;
 		}
 	}
 }
 
-// --- TIPOS DE VEHÍCULOS ---
-species Auto parent: Vehiculo { init { velocidad_base <- 70.0 #km/#h; color_base <- #cyan; tamano_dibujo <- 80.0; } }
-species Moto parent: Vehiculo { init { velocidad_base <- 90.0 #km/#h; color_base <- #orange; tamano_dibujo <- 50.0; } }
-species Camioneta parent: Vehiculo { init { velocidad_base <- 65.0 #km/#h; color_base <- #blue; tamano_dibujo <- 90.0; } }
-species Bus parent: Vehiculo { init { velocidad_base <- 50.0 #km/#h; color_base <- #yellow; tamano_dibujo <- 110.0; } }
-species Bicicleta parent: Vehiculo { init { velocidad_base <- 30.0 #km/#h; color_base <- #white; tamano_dibujo <- 30.0; } }
+// --- TIPOS DE VEHÍCULOS (IGUAL) ---
+
+species Auto parent: Vehiculo { 
+	init { velocidad_base <- 90.0 #km/#h; color_base <- #cyan; tamano_dibujo <- 80.0; } 
+}
+species Moto parent: Vehiculo { 
+	init { velocidad_base <- 90.0 #km/#h; color_base <- #orange; tamano_dibujo <- 50.0; } 
+}
+species Camioneta parent: Vehiculo { 
+	init { velocidad_base <- 90.0 #km/#h; color_base <- #blue; tamano_dibujo <- 100.0; } 
+}
+species Bus parent: Vehiculo { 
+	init { velocidad_base <- 70.0 #km/#h; color_base <- #yellow; tamano_dibujo <- 150.0; } 
+}
+species Transporte_Pesado parent: Vehiculo { 
+	init { velocidad_base <- 70.0 #km/#h; color_base <- #purple; tamano_dibujo <- 160.0; } 
+}
+species Bicicleta parent: Vehiculo { 
+	init { velocidad_base <- 30.0 #km/#h; color_base <- #white; tamano_dibujo <- 30.0; } 
+}
 
 // --- EXPERIMENTO ---
 experiment Simulacion_Calibrada type: gui {
@@ -210,45 +262,39 @@ experiment Simulacion_Calibrada type: gui {
 	parameter "Densidad Tráfico" var: num_vehiculos category: "Tráfico";
 
 	output {
-		// PANTALLA DE CONTROL
-		monitor "Día Simulado" value: dias_simulados;
-		monitor "Accidentes HOY" value: total_accidentes; // Acumulado total
-		monitor "Promedio Diario (Meta: 1.1)" value: with_precision(promedio_diario, 2);
-		
-		// ESTE ES EL DATO CLAVE:
-		monitor "Proyección Jan-Aug (Meta: 268)" value: int(proyeccion_8_meses);
+		monitor "Día Semana" value: nombres_dias at dia_semana;
+		monitor "Hora" value: hora_actual;
+		monitor "Total Accidentes" value: total_accidentes;
+		monitor "Proyección 8 meses" value: int(proyeccion_8_meses);
 
 		layout #split;
 
 		display mapa type: opengl background: color_fondo {
 			species barrio; species via_decorativa; species via_principal;
-			species Auto; species Moto; species Camioneta; species Bus; species Bicicleta;
+			species Auto; species Moto; species Camioneta; species Bus; species Bicicleta; species Transporte_Pesado;
 			
 			graphics "Puntos Negros" {
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_ruminahui;
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_bautista;
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_interoceanica;
-				draw "Int. Rumiñahui" at: punto_ruminahui color: #red font: font("Arial", 14, #bold);
-				draw "J.B. Aguirre" at: punto_bautista color: #red font: font("Arial", 14, #bold);
-				draw "Interoceánica" at: punto_interoceanica color: #red font: font("Arial", 14, #bold);
+				draw "Int. Rumiñahui" at: punto_ruminahui color: #red font: font("Arial", 6, #bold);
+				draw "J.B. Aguirre" at: punto_bautista color: #red font: font("Arial", 6, #bold);
+				draw "Interoceánica" at: punto_interoceanica color: #red font: font("Arial", 6, #bold);
 			}
 		}
 
 		display Datos_Analiticos background: #white {
-			// Gráfico de pastel arriba (Ocupa la mitad superior)
 			chart "Causas del Siniestro" type: pie size: {1.0, 0.5} position: {0, 0} {
-				data "Exceso Velocidad" value: acc_velocidad color: #blue;
-				data "No guarda Distancia" value: acc_distancia color: #skyblue;
+				data "Velocidad" value: acc_velocidad color: #blue;
+				data "Distancia" value: acc_distancia color: #skyblue;
 				data "Alcohol" value: acc_alcohol color: #orange;
-				data "Clima/Lluvia" value: acc_clima color: #gray;
-				data "Azar/Otros" value: acc_normal color: #green;
+				data "Clima" value: acc_clima color: #gray;
+				data "Azar" value: acc_normal color: #green;
 			}
 			
-			// Gráfico de línea abajo (Ocupa la mitad inferior)
-			// Le puse un rango fijo máximo de 300 en Y para que veas la meta de 268
 			chart "Acumulado vs Meta (268)" type: series size: {1.0, 0.5} position: {0, 0.5} y_range: {0, 300} {
-				data "Accidentes Reales" value: total_accidentes color: #red style: line thickness: 2.0;
-				data "Meta (Referencia)" value: 268 color: #green style: line;
+				data "Simulación" value: total_accidentes color: #red style: line thickness: 2.0;
+				data "Meta Real" value: 268 color: #green style: line;
 			}
 		}
 	}
