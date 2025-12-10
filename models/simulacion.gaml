@@ -123,7 +123,7 @@ species via_decorativa {
 species via_principal { 
 	aspect default { 
 		// 1. Capa Base (Asfalto oscuro ancho)
-		draw shape color: rgb(40,40,40) width: 25.0; 
+		draw shape color: rgb(40,40,40) width: 30.0; 
 		
 		// 2. Capa Superior (Un gris un poco más claro para textura)
 		draw shape color: rgb(70,70,70) width: 22.0;
