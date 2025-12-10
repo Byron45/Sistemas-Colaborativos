@@ -1,22 +1,22 @@
 /**
-* Name: Simulacion Av Simon Bolivar - FINAL VISUAL HD
+* Name: Simulacion Av Simon Bolivar - ESTILO OPEN STREET MAP
 * Author: Jordi, Byron
-* Description: Lógica exacta anterior + Mejora gráfica sustancial de la carretera.
+*
 */
 
 model simulacion_realista
 
 global {
-	// --- 1. ARCHIVOS (IGUAL) ---
+	// --- 1. ARCHIVOS ---
 	file archivo_toda_la_red <- file("../includes/red_vial_unificada.shp");
 	file archivo_simon_bolivar <- file("../includes/eje_simon_bolivar.shp"); 
 	file barrios_shapefile <- file("../includes/Barrios_Final.shp");
 
-	// --- 2. MUNDO (IGUAL) ---
+	// --- 2. MUNDO ---
 	geometry shape <- envelope(archivo_toda_la_red);
 	graph road_network;
 
-	// --- 3. DATOS DE RIESGO (IGUAL) ---
+	// --- 3. DATOS DE RIESGO ---
 	list<list<float>> matriz_riesgo_semanal <- [
 		[1.0, 0.5, 0.5, 0.5, 0.5, 1.5, 2.0, 2.0, 2.0, 1.0, 1.5, 1.5, 1.0, 2.0, 1.0, 1.0, 2.0, 2.5, 2.0, 1.0, 1.0, 1.0, 0.5, 1.0],
 		[0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 2.5, 2.5, 3.0, 2.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.5, 2.0, 1.5, 2.5, 1.0, 0.5, 0.5, 0.5, 1.5],
@@ -30,7 +30,7 @@ global {
 	list<float> riesgo_mensual <- [4.96, 7.52, 11.04, 7.84, 9.76, 8.48, 10.40, 12.16, 9.44, 10.24, 8.16, 9.18];
 	list<float> prob_lluvia_mes <- [0.6, 0.7, 0.8, 0.8, 0.5, 0.2, 0.1, 0.1, 0.4, 0.6, 0.7, 0.7];
 
-	// --- 4. CONFIGURACIÓN (IGUAL) ---
+	// --- 4. CONFIGURACIÓN ---
 	int mes_simulacion <- 3 min: 1 max: 12; 
 	int num_vehiculos <- 1500; 
 	bool lluvia_activa <- false;
@@ -40,7 +40,9 @@ global {
 	int minuto_actual <- 0;
 	int dias_simulados <- 0; 
 	int dia_semana <- 0;
-	rgb color_fondo <- rgb(60,60,60); // Fondo un poco más oscuro para contraste
+	
+	// COLORES DEL MUNDO 
+	rgb color_fondo <- rgb(191, 191, 191); 
 	bool es_noche <- false;
 
 	// ESTADÍSTICAS
@@ -58,12 +60,27 @@ global {
 	point extremo_norte <- {11457.18, 501.91}; 
 	point extremo_sur <- {704.03, 37538.77};
 
+	// MAPA DE CALOR
+	list<point> ubicaciones_accidentes <- [];
+	int radio_deteccion <- 600; 
+	int num_celdas_calor <- 150; 
+
 	init {
 		create barrio from: barrios_shapefile with: [nombre::string(read("NOMBRE"))];
 		create via_decorativa from: archivo_toda_la_red;
 		create via_principal from: archivo_simon_bolivar;
 		road_network <- as_edge_graph(via_principal); 
 		do crear_trafico_inicial;
+		do crear_mapa_calor;
+	}
+
+	action crear_mapa_calor {
+		loop i from: 0 to: num_celdas_calor {
+			create celda_calor {
+				via_principal via_aleatoria <- one_of(via_principal);
+				location <- any_location_in(via_aleatoria);
+			}
+		}
 	}
 
 	action crear_trafico_inicial {
@@ -89,12 +106,7 @@ global {
 				if (dia_semana > 6) { dia_semana <- 0; }
 
 				if (dias_simulados = 243) {
-					write "---------------------------------------------------";
-					write "FIN DEL PERIODO DE ESTUDIO (Enero - Agosto)";
-					write "Total Accidentes Simulados: " + total_accidentes;
-					write "Total Real Esperado: 268";
-					write "Precisión del Modelo: " + (total_accidentes / 268.0) * 100 + "%";
-					write "---------------------------------------------------";
+					write "--- FIN DE ESTUDIO --- Total Accidentes: " + total_accidentes;
 					do pause; 
 				}
 
@@ -105,30 +117,60 @@ global {
 			}
 			if (flip(prob_lluvia_mes at (mes_simulacion - 1))) { lluvia_activa <- true; } else { lluvia_activa <- false; }
 		}
-		if (hora_actual >= 19 or hora_actual <= 5) { es_noche <- true; color_fondo <- #black; } 
-		else { es_noche <- false; color_fondo <- lluvia_activa ? #dimgray : rgb(60,60,60); }
+		
+		// CAMBIO DÍA/NOCHE (ESTILO MAPA)
+		if (hora_actual >= 19 or hora_actual <= 5) { 
+			es_noche <- true; 
+			color_fondo <- rgb(20, 20, 30); // Noche: Azul muy oscuro/Negro
+		} else { 
+			es_noche <- false; 
+			color_fondo <- lluvia_activa ? rgb(200,200,200) : rgb(240, 240, 240); 
+		}
 	}
 }
 
-// --- MEJORA VISUAL DEL ENTORNO ---
+// --- VISUALIZACIÓN MEJORADA (ESTILO OPEN STREET MAP) ---
+
+species celda_calor {
+	float intensidad <- 0.0; rgb color_calor; float tamano_circulo <- 0.0; 
+	reflex actualizar_intensidad {
+		intensidad <- 0.0;
+		loop accidente over: ubicaciones_accidentes {
+			float distancia <- location distance_to accidente;
+			if (distancia < radio_deteccion) { intensidad <- intensidad + (1.0 - (distancia / radio_deteccion)); }
+		}
+		if (intensidad = 0.0) { color_calor <- rgb(0,0,0,0); tamano_circulo <- 0.0; } 
+		else if (intensidad < 0.5) { color_calor <- rgb(255, 255, 100, 120); tamano_circulo <- 80.0; } 
+		else if (intensidad < 1.2) { color_calor <- rgb(255, 220, 0, 160); tamano_circulo <- 120.0; } 
+		else if (intensidad < 2.5) { color_calor <- rgb(255, 150, 0, 180); tamano_circulo <- 180.0; } 
+		else if (intensidad < 4.0) { color_calor <- rgb(255, 80, 0, 200); tamano_circulo <- 250.0; } 
+		else { color_calor <- rgb(255, 0, 0, 230); tamano_circulo <- 350.0; } 
+	}
+	aspect default { if (tamano_circulo > 0) { draw circle(tamano_circulo) color: color_calor border: rgb(0,0,0,0); } } 
+}
 
 species via_decorativa { 
 	aspect default { 
-		// Vías secundarias más sutiles (gris oscuro)
-		draw shape color: rgb(30,30,30) width: 0.5; 
+		// ESTILO OSM SECUNDARIO: Líneas blancas con borde gris suave
+		if (es_noche) {
+			draw shape color: rgb(50,50,50) width: 0.5; 
+		} else {
+			draw shape color: #white width: 2.0 border: rgb(200,200,200); // Día: Blanca con borde
+		}
 	} 
 }
 
-// --- ¡AQUÍ ESTÁ LA MAGIA VISUAL! ---
 species via_principal { 
 	aspect default { 
-		// 1. Capa Base (Asfalto oscuro ancho)
-		draw shape color: rgb(40,40,40) width: 30.0; 
+		// ESTILO OSM PRINCIPAL:
+		rgb color_borde <- es_noche ? rgb(100, 50, 0) : rgb(200, 160, 50);
+		rgb color_relleno <- es_noche ? #orangered : rgb(250, 210, 100);
 		
-		// 2. Capa Superior (Un gris un poco más claro para textura)
-		draw shape color: rgb(70,70,70) width: 22.0;
-		
-		// 3. Línea Divisoria Central (Blanca y delgada)
+		// 1. Borde (Base ancha)
+		draw shape color: color_borde width: 30.0; 
+		// 2. Relleno (Carretera)
+		draw shape color: color_relleno width: 22.0; 
+		// 3. Línea central
 		draw shape color: #white width: 0.8;
 	} 
 }
@@ -136,12 +178,12 @@ species via_principal {
 species barrio { 
 	string nombre;
 	aspect default { 
-		// Barrios más oscuros para que resalte la vía
-		draw shape color: rgb(15,15,15) border: rgb(40,40,40); 
+		// Casi invisible, solo para dar textura sutil
+		draw shape color: es_noche ? rgb(0,0,0,0) : rgb(230,230,230, 50) border: es_noche ? rgb(40,40,40) : rgb(200,200,200); 
 	} 
 }
 
-// --- AGENTES DE TRÁFICO (Lógica Idéntica) ---
+// --- AGENTES DE TRÁFICO
 species Vehiculo skills: [moving] {
 	float velocidad_base; float velocidad_real; rgb color_base; point objetivo; float tamano_dibujo; 
 	bool es_imprudente <- flip(0.40); bool no_respeta_distancia <- flip(0.20); bool es_ebrio <- false; bool chocado <- false;
@@ -183,26 +225,17 @@ species Vehiculo skills: [moving] {
 
 	reflex calcular_accidente {
 		if (chocado) { return; }
-		
 		via_principal via_cercana <- via_principal closest_to location;
 		if (via_cercana = nil) { return; }
 		if (location distance_to via_cercana > 50.0) { return; }
 
 		float probabilidad_base <- 0.0000005; 
-
 		float factor_mes <- (riesgo_mensual at (mes_simulacion - 1)) / 8.0; 
 		float factor_hora_dia <- (matriz_riesgo_semanal at dia_semana) at hora_actual;
 		float probabilidad <- probabilidad_base * factor_mes * factor_hora_dia;
 
-		if (lluvia_activa) {
-			probabilidad <- probabilidad * 1.20; 
-			if (es_imprudente) { probabilidad <- probabilidad * 2.0; } 
-		}
-
-		if (location distance_to punto_ruminahui < 300.0 or location distance_to punto_bautista < 300.0 or location distance_to punto_interoceanica < 300.0) {
-			probabilidad <- probabilidad * 3.5; 
-		}
-
+		if (lluvia_activa) { probabilidad <- probabilidad * 1.20; if (es_imprudente) { probabilidad <- probabilidad * 2.0; } }
+		if (location distance_to punto_ruminahui < 300.0 or location distance_to punto_bautista < 300.0 or location distance_to punto_interoceanica < 300.0) { probabilidad <- probabilidad * 3.5; }
 		if (es_imprudente) { probabilidad <- probabilidad * 1.5; }
 		if (no_respeta_distancia and !empty(Vehiculo at_distance 50.0)) { probabilidad <- probabilidad * 2.0; } 
 		if (es_ebrio) { probabilidad <- probabilidad * 4.0; }
@@ -212,6 +245,7 @@ species Vehiculo skills: [moving] {
 
 	action registrar_choque {
 		chocado <- true; total_accidentes <- total_accidentes + 1;
+		ubicaciones_accidentes <- ubicaciones_accidentes + location; 
 		if (lluvia_activa and !es_ebrio) { acc_clima <- acc_clima + 1; }
 		else if (es_ebrio) { acc_alcohol <- acc_alcohol + 1; }
 		else if (es_imprudente) { acc_velocidad <- acc_velocidad + 1; }
@@ -220,44 +254,27 @@ species Vehiculo skills: [moving] {
 		write "ACCIDENTE #" + total_accidentes + " (" + species(self) + ") - " + (nombres_dias at dia_semana) + " " + hora_actual + ":00";
 	}
 	
-	// --- DIBUJO DEL VEHÍCULO CON DESPLAZAMIENTO (IGUAL) ---
 	aspect default {
-		// Calculamos el punto a la derecha
 		point pos_visual <- location + {cos(heading + 90) * 8.0, sin(heading + 90) * 8.0};
-
 		if (chocado) { 
 			draw circle(120) color: #red border: #white at: pos_visual; 
 		} else { 
-			// Dibujamos el vehículo en la posición desplazada
 			draw circle(tamano_dibujo) color: color_base at: pos_visual; 
 			draw triangle(tamano_dibujo * 0.8) color: #white rotate: heading + 90 border: #black at: pos_visual;
 		}
 	}
 }
 
-// --- TIPOS DE VEHÍCULOS (IGUAL) ---
-
-species Auto parent: Vehiculo { 
-	init { velocidad_base <- 90.0 #km/#h; color_base <- #cyan; tamano_dibujo <- 80.0; } 
-}
-species Moto parent: Vehiculo { 
-	init { velocidad_base <- 90.0 #km/#h; color_base <- #orange; tamano_dibujo <- 50.0; } 
-}
-species Camioneta parent: Vehiculo { 
-	init { velocidad_base <- 90.0 #km/#h; color_base <- #blue; tamano_dibujo <- 100.0; } 
-}
-species Bus parent: Vehiculo { 
-	init { velocidad_base <- 70.0 #km/#h; color_base <- #yellow; tamano_dibujo <- 150.0; } 
-}
-species Transporte_Pesado parent: Vehiculo { 
-	init { velocidad_base <- 70.0 #km/#h; color_base <- #purple; tamano_dibujo <- 160.0; } 
-}
-species Bicicleta parent: Vehiculo { 
-	init { velocidad_base <- 30.0 #km/#h; color_base <- #white; tamano_dibujo <- 30.0; } 
-}
+// --- TIPOS DE VEHÍCULOS---
+species Auto parent: Vehiculo { init { velocidad_base <- 90.0 #km/#h; color_base <- #cyan; tamano_dibujo <- 20.0; } }
+species Moto parent: Vehiculo { init { velocidad_base <- 90.0 #km/#h; color_base <- #orange; tamano_dibujo <- 15.0; } }
+species Camioneta parent: Vehiculo { init { velocidad_base <- 90.0 #km/#h; color_base <- #blue; tamano_dibujo <- 30.0; } }
+species Bus parent: Vehiculo { init { velocidad_base <- 70.0 #km/#h; color_base <- #yellow; tamano_dibujo <- 50.0; } }
+species Transporte_Pesado parent: Vehiculo { init { velocidad_base <- 70.0 #km/#h; color_base <- #purple; tamano_dibujo <- 70.0; } }
+species Bicicleta parent: Vehiculo { init { velocidad_base <- 30.0 #km/#h; color_base <- #white; tamano_dibujo <- 10.0; } }
 
 // --- EXPERIMENTO ---
-experiment Simulacion_Calibrada type: gui {
+experiment Simulacion_SimonBolivar type: gui {
 	parameter "Mes del Año" var: mes_simulacion category: "Escenario";
 	parameter "Densidad Tráfico" var: num_vehiculos category: "Tráfico";
 
@@ -271,15 +288,18 @@ experiment Simulacion_Calibrada type: gui {
 
 		display mapa type: opengl background: color_fondo {
 			species barrio; species via_decorativa; species via_principal;
+			species celda_calor; 
 			species Auto; species Moto; species Camioneta; species Bus; species Bicicleta; species Transporte_Pesado;
 			
 			graphics "Puntos Negros" {
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_ruminahui;
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_bautista;
 				draw circle(300) color: rgb(0,0,0,0) border: #red at: punto_interoceanica;
-				draw "Int. Rumiñahui" at: punto_ruminahui color: #red font: font("Arial", 6, #bold);
-				draw "J.B. Aguirre" at: punto_bautista color: #red font: font("Arial", 6, #bold);
-				draw "Interoceánica" at: punto_interoceanica color: #red font: font("Arial", 6, #bold);
+				
+				// Texto negro para que se lea en el fondo claro
+				draw "Int. Rumiñahui" at: punto_ruminahui color: es_noche ? #white : #black font: font("Arial", 5, #bold);
+				draw "J.B. Aguirre" at: punto_bautista color: es_noche ? #white : #black font: font("Arial", 5, #bold);
+				draw "Interoceánica" at: punto_interoceanica color: es_noche ? #white : #black font: font("Arial", 5, #bold);
 			}
 		}
 
@@ -291,7 +311,6 @@ experiment Simulacion_Calibrada type: gui {
 				data "Clima" value: acc_clima color: #gray;
 				data "Azar" value: acc_normal color: #green;
 			}
-			
 			chart "Acumulado vs Meta (268)" type: series size: {1.0, 0.5} position: {0, 0.5} y_range: {0, 300} {
 				data "Simulación" value: total_accidentes color: #red style: line thickness: 2.0;
 				data "Meta Real" value: 268 color: #green style: line;
